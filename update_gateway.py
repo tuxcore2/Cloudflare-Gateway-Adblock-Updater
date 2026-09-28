@@ -58,11 +58,11 @@ session.headers.update(headers)
 # 10000+: Hagezi filters (ordered by importance)
 blocklists: List[Dict[str, str]] = [
     {
-        "name": "Hagezi Pro++",
-        "url": "https://hagezi-mirror.dnsbunker.org/wildcard/pro.plus-onlydomains.txt",
-        "backup_url1": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro.plus-onlydomains.txt",
-        "backup_url2": "https://gitlab.com/hagezi/mirror/-/raw/main/dns-blocklists/wildcard/pro.plus-onlydomains.txt",
-        "backup_url3": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/pro.plus-onlydomains.txt",
+        "name": "Hagezi Pro",
+        "url": "https://hagezi-mirror.dnsbunker.org/wildcard/pro-onlydomains.txt",
+        "backup_url1": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro-onlydomains.txt",
+        "backup_url2": "https://gitlab.com/hagezi/mirror/-/raw/main/dns-blocklists/wildcard/pro-onlydomains.txt",
+        "backup_url3": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/pro-onlydomains.txt",
         "priority": 10000
     }
 ]
@@ -75,7 +75,7 @@ def extract_version_from_description(description: str) -> Optional[str]:
     """
     if not description:
         return None
-    
+
     # Pattern to match ", Version: X.X.X" at the end of description
     match = re.search(r',\s*Version:\s*([^\s,]+)', description)
     if match:
@@ -88,7 +88,7 @@ def load_versions_from_policies(cached_rules: List[Dict]) -> Dict[str, str]:
     Returns: dict mapping filter_name -> version
     """
     versions = {}
-    
+
     for rule in cached_rules:
         rule_name = rule.get('name', '')
         # Check if this is a Hagezi policy (starts with "Hagezi")
@@ -96,24 +96,24 @@ def load_versions_from_policies(cached_rules: List[Dict]) -> Dict[str, str]:
             filter_name = rule_name
             description = rule.get('description', '')
             version = extract_version_from_description(description)
-            
+
             if version:
                 versions[filter_name] = version
                 logger.debug(f"💾 Loaded version for {filter_name}: {version}")
-    
+
     return versions
 
-def build_description_with_version(filter_name: str, list_count: int, 
+def build_description_with_version(filter_name: str, list_count: int,
                                    domain_count: int, version: Optional[str]) -> str:
     """
     Build policy description with version info.
     Format: "Block domains from {filter_name} ({list_count} lists, {domain_count} domains), Version: {version}"
     """
     base_description = f"Block domains from {filter_name} ({list_count} lists, {domain_count} domains)"
-    
+
     if version:
         return f"{base_description}, Version: {version}"
-    
+
     return base_description
 
 def fetch_blocklist_version(url: str, backup_url1: Optional[str], backup_url2: Optional[str], backup_url3: Optional[str], filter_name: str) -> Optional[str]:
@@ -131,7 +131,7 @@ def fetch_blocklist_version(url: str, backup_url1: Optional[str], backup_url2: O
                             break
                         if not line:
                             continue
-                        
+
                         line = line.strip()
                         if line.startswith('# Version:'):
                             version = line.replace('# Version:', '').strip()
@@ -140,7 +140,7 @@ def fetch_blocklist_version(url: str, backup_url1: Optional[str], backup_url2: O
         except Exception as e:
             logger.warning(f"  ⚠️ Error fetching version from {fetch_url}: {e}")
             continue
-    
+
     logger.warning(f"  ⚠️ No version info found for {filter_name}")
     return None
 
@@ -151,15 +151,15 @@ def should_update_filter(filter_config: Dict, cached_rules: List[Dict]) -> tuple
     """
     filter_name = filter_config['name']
     policy_name = filter_name
-    
+
     # Fresh start if flag set
     if Fresh_Start:
         return True, None, "Fresh_Start enabled"
-    
+
     # Skip version check if disabled
     if not CHECK_VERSIONS:
         return True, None, "Version checking disabled"
-    
+
     # Fetch current version from blocklist
     current_version = fetch_blocklist_version(
         filter_config['url'],
@@ -168,44 +168,44 @@ def should_update_filter(filter_config: Dict, cached_rules: List[Dict]) -> tuple
         filter_config.get('backup_url3'),
         filter_name
     )
-    
+
     if not current_version:
         logger.warning(f"  ⚠️ Could not determine version, will update to be safe")
         return True, None, "Version unknown"
-    
+
     # Find the policy in Cloudflare
     policy = next((rule for rule in cached_rules if rule['name'] == policy_name), None)
-    
+
     if not policy:
         logger.info(f"  ❓ No existing policy found, first run for {filter_name}")
         return True, current_version, "First run (no policy)"
-    
+
     # Extract version from policy description
     policy_description = policy.get('description', '')
     cached_version = extract_version_from_description(policy_description)
-    
+
     if not cached_version:
         logger.warning(f"  ⚠️ Policy exists but no version info in description, treating as first run")
         return True, current_version, "No version in description (migrating)"
-    
+
     if current_version != cached_version:
         logger.info(f"  🔔 Version changed: {cached_version} → {current_version}")
         return True, current_version, "Version changed"
-    
+
     # Check if precedence matches
     target_precedence = filter_config.get('priority')
     current_precedence = policy.get('precedence')
-    
+
     if target_precedence is not None and current_precedence != target_precedence:
         logger.info(f"  ⚠️ Precedence mismatch: {current_precedence} (current) ≠ {target_precedence} (target)")
         return True, current_version, f"Precedence mismatch ({current_precedence} -> {target_precedence})"
-    
+
     logger.info(f"  ⏭️ Version unchanged ({current_version}), skipping update")
     return False, current_version, "Version unchanged"
 
 # Sync API functions (for non-critical operations)
-def api_request(method: str, url: str, data: Optional[Dict] = None, 
-                retries: int = MAX_RETRIES, backoff_factor: int = BACKOFF_FACTOR, 
+def api_request(method: str, url: str, data: Optional[Dict] = None,
+                retries: int = MAX_RETRIES, backoff_factor: int = BACKOFF_FACTOR,
                 timeout: int = REQUEST_TIMEOUT) -> requests.Response:
     """Make API request with retry logic (sync version)."""
     last_exception = None
@@ -215,19 +215,19 @@ def api_request(method: str, url: str, data: Optional[Dict] = None,
             if data:
                 kwargs["json"] = data
             response = getattr(session, method.lower())(url, **kwargs)
-            
+
             if response.status_code == 429:
                 retry_after = int(response.headers.get('Retry-After', backoff_factor * (2 ** (attempt - 1))))
                 logger.warning(f"⚠️ Rate limited (429). Waiting {retry_after}s before retry {attempt}/{retries}...")
                 time.sleep(retry_after)
                 continue
-            
+
             if response.status_code >= 500 and attempt < retries:
                 sleep_time = backoff_factor * (2 ** (attempt - 1))
                 logger.warning(f"⚠️ Server error {response.status_code}. Retry {attempt}/{retries} in {sleep_time}s...")
                 time.sleep(sleep_time)
                 continue
-            
+
             return response
         except requests.exceptions.RequestException as e:
             last_exception = e
@@ -238,7 +238,7 @@ def api_request(method: str, url: str, data: Optional[Dict] = None,
             else:
                 logger.error(f"🚫 All retries exhausted for {method} {url}")
                 raise last_exception
-    
+
     if last_exception:
         raise last_exception
     raise Exception(f"Unexpected error in api_request for {method} {url}")
@@ -248,12 +248,12 @@ def check_api_response(response: requests.Response, action: str) -> Dict:
     if response.status_code != 200:
         logger.error(f"🚫 Error {action}: {response.status_code} - {response.text}")
         raise Exception(f"API error during {action}: {response.status_code}")
-    
+
     data = response.json()
     if not data.get('success', False):
         logger.error(f"🚫 API success false during {action}: {json.dumps(data)}")
         raise Exception(f"API returned success=false during {action}")
-    
+
     return data
 
 def is_valid_domain(domain: str) -> bool:
@@ -272,25 +272,25 @@ def get_all_paginated(endpoint: str, per_page: int = 100) -> List[Dict]:
     """Fetch all items from a paginated endpoint."""
     all_items = []
     page = 1
-    
+
     try:
         while True:
             url = f"{endpoint}?per_page={per_page}&page={page}"
             response = api_request('GET', url)
             data = check_api_response(response, f"getting {endpoint} page {page}")
-            
+
             items = data.get('result') or []
             all_items.extend(items)
-            
+
             result_info = data.get('result_info') or {}
             total_count = result_info.get('total_count', 0)
-            
+
             if page * result_info.get('per_page', per_page) >= total_count or not items:
                 break
-            
+
             page += 1
             time.sleep(API_DELAY)
-        
+
         safe_endpoint = endpoint.replace(account_id, '[HIDDEN]')
         logger.info(f"☄️ Fetched {len(all_items)} items from {safe_endpoint} ({page} page(s))")
         return all_items
@@ -299,7 +299,7 @@ def get_all_paginated(endpoint: str, per_page: int = 100) -> List[Dict]:
         raise
 
 # Async API functions
-async def async_api_request(session: aiohttp.ClientSession, method: str, url: str, 
+async def async_api_request(session: aiohttp.ClientSession, method: str, url: str,
                            data: Optional[Dict] = None) -> Dict:
     """Make async API request with retry logic."""
     for attempt in range(1, MAX_RETRIES + 1):
@@ -307,20 +307,20 @@ async def async_api_request(session: aiohttp.ClientSession, method: str, url: st
             kwargs = {"timeout": aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)}
             if data:
                 kwargs["json"] = data
-            
+
             async with getattr(session, method.lower())(url, **kwargs) as response:
                 if response.status == 429:
                     retry_after = int(response.headers.get('Retry-After', BACKOFF_FACTOR * (2 ** (attempt - 1))))
                     logger.warning(f"⚠️ Rate limited (429). Waiting {retry_after}s...")
                     await asyncio.sleep(retry_after)
                     continue
-                
+
                 if response.status >= 500 and attempt < MAX_RETRIES:
                     sleep_time = BACKOFF_FACTOR * (2 ** (attempt - 1))
                     logger.warning(f"⚠️ Server error {response.status}. Retry {attempt}/{MAX_RETRIES}...")
                     await asyncio.sleep(sleep_time)
                     continue
-                
+
                 # Retry on 400 for mutating requests (PATCH/POST/PUT) — can be transient conflicts
                 # But skip retry if the error is semantic (e.g. "not found in list") — retrying won't help
                 if response.status == 400 and method.upper() in ('PATCH', 'POST', 'PUT') and attempt < MAX_RETRIES:
@@ -332,17 +332,17 @@ async def async_api_request(session: aiohttp.ClientSession, method: str, url: st
                     logger.warning(f"⚠️ Bad request (400) on {method}. Retry {attempt}/{MAX_RETRIES} in {sleep_time}s...")
                     await asyncio.sleep(sleep_time)
                     continue
-                
+
                 result = await response.json()
                 return {'status': response.status, 'data': result}
-                
+
         except Exception as e:
             if attempt < MAX_RETRIES:
                 sleep_time = BACKOFF_FACTOR * (2 ** (attempt - 1))
                 await asyncio.sleep(sleep_time)
             else:
                 raise Exception(f"All retries exhausted for {method} {url}: {e}")
-    
+
     raise Exception(f"Unexpected error in async_api_request for {method} {url}")
 
 async def async_delete_list(session: aiohttp.ClientSession, semaphore: asyncio.Semaphore,
@@ -352,7 +352,7 @@ async def async_delete_list(session: aiohttp.ClientSession, semaphore: asyncio.S
         try:
             url = f"{base_url}/lists/{list_id}"
             result = await async_api_request(session, 'DELETE', url)
-            
+
             if result['status'] == 200:
                 logger.info(f"  🧹 Deleted list: {list_name}")
                 await asyncio.sleep(API_DELAY)
@@ -365,7 +365,7 @@ async def async_delete_list(session: aiohttp.ClientSession, semaphore: asyncio.S
             return False
 
 async def async_create_list(session: aiohttp.ClientSession, semaphore: asyncio.Semaphore,
-                           list_name: str, filter_name: str, chunk_num: int, 
+                           list_name: str, filter_name: str, chunk_num: int,
                            total_chunks: int, domains: List[str]) -> Optional[str]:
     """Create a single list asynchronously."""
     async with semaphore:
@@ -376,10 +376,10 @@ async def async_create_list(session: aiohttp.ClientSession, semaphore: asyncio.S
                 "description": f"{filter_name} Chunk {chunk_num}/{total_chunks}",
                 "items": [{"value": domain} for domain in domains]
             }
-            
+
             url = f"{base_url}/lists"
             result = await async_api_request(session, 'POST', url, data_payload)
-            
+
             if result['status'] == 200 and result['data'].get('success'):
                 list_id = result['data']['result']['id']
                 logger.info(f"  🛠️ Created list {chunk_num}/{total_chunks}: {list_name}")
@@ -396,34 +396,34 @@ async def async_delete_lists_batch(lists_to_delete: List[Dict]) -> int:
     """Delete multiple lists in parallel."""
     if not lists_to_delete:
         return 0
-    
+
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-    
+
     async with aiohttp.ClientSession(headers=headers) as session:
         tasks = [
             async_delete_list(session, semaphore, lst['id'], lst['name'])
             for lst in lists_to_delete
         ]
         results = await asyncio.gather(*tasks)
-    
+
     return sum(1 for r in results if r)
 
-async def async_create_lists_batch(chunks: List[List[str]], filter_name: str, 
+async def async_create_lists_batch(chunks: List[List[str]], filter_name: str,
                                   list_prefix: str) -> List[str]:
     """Create multiple lists in parallel."""
     if not chunks:
         return []
-    
+
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-    
+
     async with aiohttp.ClientSession(headers=headers) as session:
         tasks = [
-            async_create_list(session, semaphore, f"{list_prefix}{i}", 
+            async_create_list(session, semaphore, f"{list_prefix}{i}",
                             filter_name, i, len(chunks), chunk)
             for i, chunk in enumerate(chunks, 1)
         ]
         results = await asyncio.gather(*tasks)
-    
+
     return [list_id for list_id in results if list_id is not None]
 
 async def async_get_list_items(session: aiohttp.ClientSession, list_id: str) -> List[str]:
@@ -431,28 +431,28 @@ async def async_get_list_items(session: aiohttp.ClientSession, list_id: str) -> 
     all_items = []
     page = 1
     per_page = 1000  # Max per page for this endpoint can be higher
-    
+
     while True:
         url = f"{base_url}/lists/{list_id}/items?per_page={per_page}&page={page}"
         result = await async_api_request(session, 'GET', url)
-        
+
         if result['status'] != 200:
             logger.warning(f"⚠️ Failed to get items for list {list_id}: {result['status']}")
             break
-            
+
         data = result['data']
         items = data.get('result') or []
         all_items.extend(item['value'] for item in items)
-        
+
         result_info = data.get('result_info') or {}
         total_count = result_info.get('total_count', 0)
-        
+
         if page * per_page >= total_count or not items:
             break
-            
+
         page += 1
         await asyncio.sleep(API_DELAY)
-        
+
     return all_items
 
 async def async_patch_list(session: aiohttp.ClientSession, semaphore: asyncio.Semaphore,
@@ -460,7 +460,7 @@ async def async_patch_list(session: aiohttp.ClientSession, semaphore: asyncio.Se
     """Patch a list by removing and/or appending items."""
     if not remove and not append:
         return True
-        
+
     async with semaphore:
         try:
             payload = {}
@@ -468,10 +468,10 @@ async def async_patch_list(session: aiohttp.ClientSession, semaphore: asyncio.Se
                 payload['remove'] = remove
             if append:
                 payload['append'] = [{'value': domain} for domain in append]
-                
+
             url = f"{base_url}/lists/{list_id}"
             result = await async_api_request(session, 'PATCH', url, payload)
-            
+
             if result['status'] == 200:
                 logger.info(f"  ♻️ Patched {list_name}: -{len(remove)} / +{len(append)}")
                 await asyncio.sleep(API_DELAY)
@@ -494,13 +494,13 @@ async def async_patch_list(session: aiohttp.ClientSession, semaphore: asyncio.Se
             logger.error(f"  🚫 Error patching {list_name}: {e}")
             return False
 
-async def async_update_policy(session: aiohttp.ClientSession, policy_id: str, 
+async def async_update_policy(session: aiohttp.ClientSession, policy_id: str,
                              policy_data: Dict) -> bool:
     """Update an existing policy."""
     try:
         url = f"{base_url}/rules/{policy_id}"
         result = await async_api_request(session, 'PUT', url, policy_data)
-        
+
         if result['status'] == 200:
             logger.info(f"🏆 Updated policy: {policy_data['name']}")
             return True
@@ -511,7 +511,7 @@ async def async_update_policy(session: aiohttp.ClientSession, policy_id: str,
         logger.error(f"🚫 Error updating policy {policy_data['name']}: {e}")
         return False
 
-def update_policy_for_filter(filter_config: Dict, final_list_ids: List[str], 
+def update_policy_for_filter(filter_config: Dict, final_list_ids: List[str],
                              target_domain_count: int, cached_rules: List[Dict],
                              version: Optional[str] = None) -> bool:
     """Update or create the policy for a filter with version info in description"""
@@ -525,15 +525,15 @@ def update_policy_for_filter(filter_config: Dict, final_list_ids: List[str],
     # Build traffic expression
     expression = " or ".join([f"any(dns.domains[*] in ${lid})" for lid in final_list_ids])
     priority = filter_config.get('priority', 99)
-    
+
     # Build description with version info
     description = build_description_with_version(
-        filter_name, 
-        len(final_list_ids), 
-        target_domain_count, 
+        filter_name,
+        len(final_list_ids),
+        target_domain_count,
         version
     )
-    
+
     policy_payload = {
         "action": "block",
         "description": description,
@@ -546,7 +546,7 @@ def update_policy_for_filter(filter_config: Dict, final_list_ids: List[str],
 
     # Check if policy exists to determine POST or PUT
     existing_policy = next((rule for rule in cached_rules if rule['name'] == policy_name), None)
-    
+
     if existing_policy:
         logger.info(f"✍️ Updating existing policy '{policy_name}'...")
         async def run_update():
@@ -564,7 +564,7 @@ def update_policy_for_filter(filter_config: Dict, final_list_ids: List[str],
         except:
             return False
 
-def process_filter_async(filter_config: Dict, cached_lists: List[Dict], 
+def process_filter_async(filter_config: Dict, cached_lists: List[Dict],
                         cached_rules: List[Dict]) -> Dict:
     """Process a filter with diff-based updates."""
     filter_name = filter_config["name"]
@@ -602,15 +602,15 @@ def process_filter_async(filter_config: Dict, cached_lists: List[Dict],
     lines = content.splitlines()
     target_domains = set()
     current_version = None
-    
+
     for line in lines:
         line = line.strip()
-        
+
         # Extract version from header
         if line.startswith('# Version:') and not current_version:
             current_version = line.replace('# Version:', '').strip()
             logger.info(f"🚿 Extracted version from blocklist: {current_version}")
-        
+
         # Parse domains
         if line and not line.startswith('#') and is_valid_domain(line):
             target_domains.add(line)
@@ -628,7 +628,7 @@ def process_filter_async(filter_config: Dict, cached_lists: List[Dict],
         existing_lists.sort(key=lambda x: int(x['name'].replace(list_prefix, '')) if x['name'].replace(list_prefix, '').isdigit() else 999999)
     except:
         pass # Fallback if naming is weird
-        
+
     logger.info(f"ℹ️ Found {len(existing_lists)} existing lists for {filter_name}")
 
     # Process Lists (Diff vs Full Cleanup)
@@ -658,7 +658,7 @@ def process_filter_async(filter_config: Dict, cached_lists: List[Dict],
         # Create New Lists
         domain_list = list(target_domains)
         chunks = list(chunker(domain_list, CHUNK_SIZE))
-        
+
         async def create_all_new_chunks_cleanup():
             semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
             async with aiohttp.ClientSession(headers=headers) as session:
@@ -667,13 +667,13 @@ def process_filter_async(filter_config: Dict, cached_lists: List[Dict],
                     # In destructive mode, we can start from 1 cleanly
                     chunk_num = i + 1
                     list_name = f"{list_prefix}{chunk_num}"
-                    tasks.append(async_create_list(session, semaphore, list_name, 
+                    tasks.append(async_create_list(session, semaphore, list_name,
                                                  filter_name, chunk_num, len(chunks), chunk))
                 return await asyncio.gather(*tasks)
 
         created_ids = asyncio.run(create_all_new_chunks_cleanup())
         new_list_ids = [lid for lid in created_ids if lid]
-        
+
         # Create Policy
         policy_success = update_policy_for_filter(filter_config, new_list_ids, len(target_domains), cached_rules, current_version)
 
@@ -692,35 +692,35 @@ def process_filter_async(filter_config: Dict, cached_lists: List[Dict],
             tasks = []
             for lst in existing_lists:
                 tasks.append(async_get_list_items(session, lst['id']))
-            
+
             results = await asyncio.gather(*tasks)
-            
+
             for i, domains in enumerate(results):
                 lst = existing_lists[i]
                 list_capacities[lst['id']] = len(domains)
                 for d in domains:
                     remote_domain_to_list_map[d] = lst['id']
-    
+
     if existing_lists:
         logger.info("📡 Fetching current list contents from Cloudflare...")
         asyncio.run(fetch_all_current_content())
 
     # Calculate Diff
     current_remote_domains = set(remote_domain_to_list_map.keys())
-    
+
     # Domains to remove: in Gateway but not in Target
     to_remove = current_remote_domains - target_domains
-    
+
     # Domains to add: in Target but not in Gateway
     to_add = list(target_domains - current_remote_domains)
-    
+
     logger.info(f"⚖️ Diff analysis:")
     logger.info(f"  ➖ To remove: {len(to_remove)}")
     logger.info(f"  ➕ To add:    {len(to_add)}")
     logger.info(f"  🟰 Unchanged: {len(target_domains) - len(to_add)}")
 
     # Apply Patches (ASYNC)
-    
+
     # Group removals by list
     removals_by_list = {} # list_id -> [domains]
     for domain in to_remove:
@@ -796,7 +796,7 @@ def process_filter_async(filter_config: Dict, cached_lists: List[Dict],
             tasks = []
             for list_id, patch_data in patches.items():
                 list_name = next((l['name'] for l in existing_lists if l['id'] == list_id), list_id)
-                tasks.append(async_patch_list(session, semaphore, list_id, list_name, 
+                tasks.append(async_patch_list(session, semaphore, list_id, list_name,
                                             patch_data['remove'], patch_data['append']))
             await asyncio.gather(*tasks)
 
@@ -811,7 +811,7 @@ def process_filter_async(filter_config: Dict, cached_lists: List[Dict],
     if to_add:
         logger.info(f"Creating new lists for {len(to_add)} remaining domains...")
         chunks = list(chunker(to_add, CHUNK_SIZE))
-        
+
         # Determine next chunk number
         current_max_chunk = 0
         for lst in existing_lists:
@@ -820,11 +820,11 @@ def process_filter_async(filter_config: Dict, cached_lists: List[Dict],
                 current_max_chunk = max(current_max_chunk, num)
             except:
                 pass
-        
+
         # Determine start index for new chunks to continue numbering from existing lists
         # Example: If List_5 exists, new chunks start at List_6
         # We manually loop here to ensure correct numbering avoids conflicts
-        
+
         async def create_new_chunks():
             semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
             async with aiohttp.ClientSession(headers=headers) as session:
@@ -832,7 +832,7 @@ def process_filter_async(filter_config: Dict, cached_lists: List[Dict],
                 for i, chunk in enumerate(chunks):
                     chunk_num = current_max_chunk + 1 + i
                     list_name = f"{list_prefix}{chunk_num}"
-                    tasks.append(async_create_list(session, semaphore, list_name, 
+                    tasks.append(async_create_list(session, semaphore, list_name,
                                                  filter_name, chunk_num, len(chunks)+current_max_chunk, chunk))
                 return await asyncio.gather(*tasks)
 
@@ -844,18 +844,18 @@ def process_filter_async(filter_config: Dict, cached_lists: List[Dict],
     # Check capacities
     lists_to_delete = []
     final_list_ids = []
-    
+
     for lst in existing_lists:
         if list_capacities.get(lst['id'], 0) == 0:
             lists_to_delete.append(lst)
         else:
             final_list_ids.append(lst['id'])
-    
+
     final_list_ids.extend(new_list_ids)
 
     # Update/Create Policy FIRST (this removes references to empty lists)
     policy_success = update_policy_for_filter(filter_config, final_list_ids, len(target_domains), cached_rules, current_version)
-    
+
     # Now delete empty lists after policy no longer references them
     if lists_to_delete:
         logger.info(f"Deleting {len(lists_to_delete)} empty lists...")
@@ -898,7 +898,7 @@ if __name__ == "__main__":
     for bl in blocklists:
         filter_name = bl['name']
         should_update, current_version, reason = should_update_filter(bl, cached_rules_early)
-        
+
         if should_update:
             logger.info(f"✅ {filter_name}: WILL UPDATE ({reason})")
             filters_to_update.append(bl)
@@ -940,21 +940,21 @@ if __name__ == "__main__":
             filter_start = time.time()
             result = process_filter_async(bl, cached_lists, cached_rules)
             filter_elapsed = time.time() - filter_start
-            
+
             if result['success']:
                 stats["filters_processed"] += 1
                 stats["total_domains"] += result.get('domains', 0)
                 stats["lists_created"] += result.get('lists', 0)
                 stats["policies_created"] += 1
-                
+
                 logger.info(f"🏁 Filter completed in {filter_elapsed:.1f}s")
-                
+
                 # Refresh cache
                 cached_rules = get_all_paginated(f"{base_url}/rules")
                 cached_lists = get_all_paginated(f"{base_url}/lists")
             else:
                 stats["errors"].append(bl['name'])
-                
+
         except Exception as e:
             logger.error(f"🚫 Failed to process {bl['name']}: {e}", exc_info=True)
             stats["errors"].append(bl['name'])
@@ -980,3 +980,4 @@ if __name__ == "__main__":
         sys.exit(1)
     else:
         logger.info("\n✅✅ All filters updated successfully!")
+
